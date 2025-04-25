@@ -1,6 +1,9 @@
-from ..CausalAbstraction.tasks.RAVEL.ravel import get_token_positions, get_task
-from ..CausalAbstraction.experiments.aggregate_experiments import residual_stream_baselines
-from ..CausalAbstraction.pipeline import LMPipeline
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from CausalAbstraction.tasks.RAVEL.ravel import get_token_positions, get_task
+from CausalAbstraction.experiments.aggregate_experiments import residual_stream_baselines
+from CausalAbstraction.pipeline import LMPipeline
 import torch
 import re
 import gc
@@ -21,7 +24,7 @@ if __name__ == "__main__":
     gc.collect()
     torch.cuda.empty_cache()
 
-    task = get_task(hf=True, size=10000)
+    task = get_task(hf=True, size=10)
     
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     if args.use_gpu1 and torch.cuda.is_available():

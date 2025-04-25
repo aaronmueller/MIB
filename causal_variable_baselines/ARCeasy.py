@@ -1,8 +1,10 @@
-
-from ..CausalAbstraction.tasks.ARC.ARC import get_token_positions, get_task
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from CausalAbstraction.tasks.ARC.ARC import get_token_positions, get_task
 import gc, torch
-from ..CausalAbstraction.pipeline import LMPipeline
-from ..CausalAbstraction.experiments.aggregate_experiments import residual_stream_baselines
+from CausalAbstraction.pipeline import LMPipeline
+from CausalAbstraction.experiments.aggregate_experiments import residual_stream_baselines
 
 if __name__ == "__main__":
     import argparse
@@ -59,7 +61,7 @@ if __name__ == "__main__":
         train_data = [name + "_train" for name in names]
         validation_data = [name + "_validation" for name in names]
         test_data = [name + "_test" for name in names]
-        test_data += [name + "_testprivate" for name in names]
+        # test_data += [name + "_testprivate" for name in names]
         verbose = False
         results_dir = "results_ARC_easy"
 

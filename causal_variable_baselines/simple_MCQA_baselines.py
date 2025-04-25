@@ -1,6 +1,9 @@
-from ..CausalAbstraction.tasks.simple_MCQA.simple_MCQA import get_token_positions, get_task
-from ..CausalAbstraction.experiments.aggregate_experiments import residual_stream_baselines
-from ..CausalAbstraction.pipeline import LMPipeline
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from CausalAbstraction.tasks.simple_MCQA.simple_MCQA import get_token_positions, get_task
+from CausalAbstraction.experiments.aggregate_experiments import residual_stream_baselines
+from CausalAbstraction.pipeline import LMPipeline
 import torch
 import gc
 
