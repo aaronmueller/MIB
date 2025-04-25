@@ -1,3 +1,6 @@
 [submodule "MIB-circuit-track"]
 	path = MIB-circuit-track
 	url = https://github.com/hannamw/MIB-circuit-track
+[submodule "CausalAbstraction"]
+	path = CausalAbstraction
+	url = https://github.com/atticusg/CausalAbstraction
