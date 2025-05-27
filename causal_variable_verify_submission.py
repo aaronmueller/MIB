@@ -5,7 +5,7 @@ import importlib.util
 import ast
 import os
 import torch
-from model_units.model_units import Featurizer, SubspaceFeaturizerModule, SubspaceInverseFeaturizerModule, SAEFeaturizerModule, SAEInverseFeaturizerModule, IdentityFeaturizerModule, IdentityInverseFeaturizerModule
+from CausalAbstraction.model_units.model_units import Featurizer, SubspaceFeaturizerModule, SubspaceInverseFeaturizerModule, SAEFeaturizerModule, SAEInverseFeaturizerModule, IdentityFeaturizerModule, IdentityInverseFeaturizerModule
 from typing import Optional, Tuple, Union
 from collections import defaultdict
 
@@ -238,17 +238,81 @@ def verify_directory(path: str, modules) -> Tuple[str, Union[str, None]]:
 
 
 def validate_token_positions(filepath: str) -> Tuple[bool, str]:
-    # determine whether a python file contains a function called get_token_positions
-    with open(filepath, 'r') as file:
-        tree = ast.parse(file.read(), filename=filepath)
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name == "get_token_positions":
-                # Check if the function has a decorator
-                if any(isinstance(decorator, ast.Name) and decorator.id == "token_position" for decorator in node.decorator_list):
-                    return True, "Found valid token position function"
-                else:
-                    return False, "Token position function does not have the correct decorator"
-    return False, "No token position function found"
+    """
+    Validate that a python file contains a get_token_positions function that returns 
+    a list of TokenPosition objects.
+    """
+    try:
+        with open(filepath, 'r') as file:
+            tree = ast.parse(file.read(), filename=filepath)
+    except Exception as e:
+        return False, f"Error parsing file: {str(e)}"
+        
+    # Find the get_token_positions function
+    function_node = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "get_token_positions":
+            function_node = node
+            break
+    
+    if function_node is None:
+        return False, "No get_token_positions function found"
+    
+    # Analyze return statements in the function
+    return_nodes = []
+    for node in ast.walk(function_node):
+        if isinstance(node, ast.Return) and node.value is not None:
+            return_nodes.append(node)
+    
+    if not return_nodes:
+        return False, "get_token_positions function has no return statements"
+    
+    # Check each return statement
+    for return_node in return_nodes:
+        # Case 1: Direct list return like: return [TokenPosition(...), TokenPosition(...)]
+        if isinstance(return_node.value, ast.List):
+            if _check_list_contains_token_position(return_node.value):
+                return True, "Found valid get_token_positions function returning list of TokenPosition objects"
+            else:
+                return False, "get_token_positions returns a list but it doesn't contain TokenPosition objects"
+        
+        # Case 2: Variable return like: return token_positions
+        elif isinstance(return_node.value, ast.Name):
+            var_name = return_node.value.id
+            
+            # Look for assignments to this variable in the function
+            if _check_variable_assigned_token_position_list(function_node, var_name):
+                return True, "Found valid get_token_positions function returning list of TokenPosition objects"
+            else:
+                return False, "get_token_positions returns a list but it doesn't contain TokenPosition objects"
+        
+        else:
+            return False, "get_token_positions function does not return a list"
+    
+    return False, "Could not determine return type of get_token_positions function"
+
+
+def _check_list_contains_token_position(list_node: ast.List) -> bool:
+    """Check if an AST List node contains TokenPosition constructor calls."""
+    for element in list_node.elts:
+        if isinstance(element, ast.Call):
+            # Check for TokenPosition constructor call
+            if isinstance(element.func, ast.Name) and element.func.id == "TokenPosition":
+                return True
+    return False
+
+
+def _check_variable_assigned_token_position_list(function_node: ast.FunctionDef, var_name: str) -> bool:
+    """Check if a variable is assigned a list containing TokenPosition objects within the function."""
+    for node in ast.walk(function_node):
+        if isinstance(node, ast.Assign):
+            # Check each assignment target
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == var_name:
+                    # Check if the assigned value is a list with TokenPosition objects
+                    if isinstance(node.value, ast.List):
+                        return _check_list_contains_token_position(node.value)
+    return False
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -315,42 +379,73 @@ if __name__ == "__main__":
         if not os.path.isdir(dirpath):
             continue
 
+        # Parse directory name in format: TASK_MODEL_VARIABLE
+        # Split by underscore and try to match known components
+        parts = dirname.split('_')
+        
+        # Find task name (can be multi-part like "4_answer_MCQA")
         curr_task = None
+        task_end_idx = 0
         for task in TASKS:
-            if dirname.startswith(task) or f"_{task}" in dirname:
-                curr_task = task
-                break
+            task_parts = task.split('_')
+            if len(parts) >= len(task_parts):
+                if parts[:len(task_parts)] == task_parts:
+                    curr_task = task
+                    task_end_idx = len(task_parts)
+                    break
+        
         if curr_task is None:
-            warnings.append(f"Skipped directory `{dirname}`: Not a valid task name")
+            warnings.append(f"Skipped directory `{dirname}`: Could not identify valid task name")
             continue
-        for dirname2 in os.listdir(dirpath):
-            dirpath2 = os.path.join(dirpath, dirname2)
-            curr_model = None
-            for model in MODELS:
-                if dirname2.startswith(model) or f"_{model}" in dirname2:
-                    curr_model = model
-                    continue
-            if curr_model is None:
-                warnings.append(f"Skipped directory `{dirname2}`: Not a valid model name")
-            if (curr_task, curr_model) not in VALID_TASK_MODELS:
-                warnings.append(f"Skipped directory `{dirname2}`: Task {curr_task} and model {curr_model} not in valid combinations.")
-                continue
-            for dirname3 in os.listdir(dirpath2):
-                dirpath3 = os.path.join(dirpath2, dirname3)
-                curr_variable = None
-                for variable in TASK_VARIABLES[curr_task]:
-                    if dirname3 == variable:
-                        curr_variable = variable
-                        break    
-                if curr_variable is None:
-                    #warning that variable invalid for task
-                    warnings.append(f"Skipped directory `{dirname}`: Not a valid variable name for task {curr_task}")
-                    continue
-                contains_valid_triplet, message = verify_directory(dirpath3, modules)
-                if contains_valid_triplet:
-                    found_triplets.add((curr_task, curr_model, curr_variable))
-                else:
-                    warnings.append(f"Couldn't find a valid featurizer/inverse featurizer/indices triplet in {dirname}: {message}")
+        
+        # Find model name in remaining parts
+        remaining_parts = parts[task_end_idx:]
+        curr_model = None
+        model_end_idx = 0
+        
+        for model in MODELS:
+            model_parts = model.split('_') if '_' in model else [model]
+            if len(remaining_parts) >= len(model_parts):
+                # Check if model parts match at any position in remaining parts
+                for start_pos in range(len(remaining_parts) - len(model_parts) + 1):
+                    if remaining_parts[start_pos:start_pos + len(model_parts)] == model_parts:
+                        curr_model = model
+                        model_end_idx = task_end_idx + start_pos + len(model_parts)
+                        break
+                if curr_model:
+                    break
+        
+        if curr_model is None:
+            warnings.append(f"Skipped directory `{dirname}`: Could not identify valid model name")
+            continue
+        
+        # Find variable name in remaining parts
+        variable_parts = parts[model_end_idx:]
+        curr_variable = None
+        
+        if curr_task in TASK_VARIABLES:
+            for variable in TASK_VARIABLES[curr_task]:
+                variable_parts_expected = variable.split('_') if '_' in variable else [variable]
+                if variable_parts == variable_parts_expected:
+                    curr_variable = variable
+                    break
+        
+        if curr_variable is None:
+            warnings.append(f"Skipped directory `{dirname}`: Could not identify valid variable name for task {curr_task}")
+            continue
+        
+        # Check if this task/model combination is valid
+        if (curr_task, curr_model) not in VALID_TASK_MODELS:
+            warnings.append(f"Skipped directory `{dirname}`: Task {curr_task} and model {curr_model} not in valid combinations")
+            continue
+        
+        # Verify the directory contains valid featurizer files
+        contains_valid_triplet, message = verify_directory(dirpath, modules)
+        if contains_valid_triplet:
+            found_triplets.add((curr_task, curr_model, curr_variable))
+        else:
+            warnings.append(f"Couldn't find a valid featurizer/inverse featurizer/indices triplet in {dirname}: {message}")
+    
     # TODO: If we expect token position function(s) inside the task/model/counterfactual folder, verify it here
     
     out_str = ""
