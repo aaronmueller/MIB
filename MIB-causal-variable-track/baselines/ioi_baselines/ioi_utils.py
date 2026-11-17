@@ -250,7 +250,12 @@ def setup_pipeline(model_name, device, eval_batch_size=None):
     else:
         pipeline = LMPipeline(model_path, max_new_tokens=1, device=device, dtype=torch.float16,
                               max_length=32, logit_labels=True)
-    
+        # pyvene reads config.head_dim for Qwen2 attention heads, which recent
+        # transformers versions no longer set on Qwen2Config.
+        model_config = pipeline.model.config
+        if not hasattr(model_config, "head_dim"):
+            model_config.head_dim = model_config.hidden_size // model_config.num_attention_heads
+
     pipeline.tokenizer.padding_side = "left"
     
     return pipeline, batch_size
