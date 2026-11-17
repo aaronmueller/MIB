@@ -130,9 +130,15 @@ def load_linear_params(submission_path, model_name):
         except Exception as e:
             raise ValueError(f"Failed to load linear parameters from any source: {e}")
 
-    # Find the coefficients for this model
+    # Find the coefficients for this model.
+    # Submissions key the file by short name ("gpt2", "qwen", ...), as written by
+    # ioi_learn_linear_params.py, while model_name is the class name.
+    short_names = {"GPT2LMHeadModel": "gpt2", "Qwen2ForCausalLM": "qwen",
+                   "LlamaForCausalLM": "llama", "Gemma2ForCausalLM": "gemma"}
     if model_name in all_coeffs:
         coeffs = all_coeffs[model_name]
+    elif short_names.get(model_name) in all_coeffs:
+        coeffs = all_coeffs[short_names[model_name]]
     elif "gemma" in model_name.lower() and "gemma" in all_coeffs:
         coeffs = all_coeffs["gemma"]
     elif "default" in all_coeffs:
